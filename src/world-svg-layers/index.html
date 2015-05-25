@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Word SVG Layers Example | Vizzuality Sandbox</title>
+    <link rel="stylesheet" href="http://libs.cartocdn.com/cartodb.js/v3/3.14/themes/css/cartodb.css">
+    <style>
+      #map {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #slider {
+        display: none;
+        position: absolute;
+        bottom: 20px;
+        left: 45%;
+        z-index: 100;
+      }
+      #slider input {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="slider">
+      <button type="button" id="sliderPlay">Play</button>
+      <button type="button" id="sliderStop">Stop</button>
+      <label id="sliderLabel"></label>
+      <input type="range" id="sliderRange">
+    </div>
+  
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <script src="http://d3js.org/colorbrewer.v1.min.js"></script>
+    <script src="http://api.tiles.mapbox.com/mapbox.js/plugins/leaflet-omnivore/v0.2.0/leaflet-omnivore.min.js"></script>
+    <script src="http://libs.cartocdn.com/cartodb.js/v3/3.14/cartodb.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>
