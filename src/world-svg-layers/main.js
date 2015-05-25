@@ -6,36 +6,47 @@
     return d3.scale.quantize().range(colorbrewer.Greens[buckets]);
   };
 
+  helpers.csvToJSON = function(data) {
+    var result = Papa.parse(data, { header: true, dynamicTyping: true });
+    return result.data;
+  };
+
+  var CountryModel = Backbone.Model.extend({
+    idAttribute: 'cartodb_id'
+  });
+
   var CountriesCollection = Backbone.Collection.extend({
 
-    query: 'SELECT e.total_co_excluding_land_use_change_and_forestry_mtco AS total, e.year, e.country, c.cartodb_id FROM cait_2_0_country_co2_emissions e JOIN countries c on c.admin=e.country',
+    model: CountryModel,
 
-    url: function() {
-      return 'http://insights.cartodb.com/api/v1/sql/';
-    },
+    // query: 'SELECT e.total_co_excluding_land_use_change_and_forestry_mtco AS total, e.year as year, e.country as name, c.cartodb_id as id FROM cait_2_0_country_co2_emissions e JOIN countries c on c.admin=e.country',
 
-    parse: function(data) {
-      return data.rows;
-    },
+    // url: function() {
+    //   return 'http://insights.cartodb.com/api/v1/sql/';
+    // },
 
-    fetchData: function(callback) {
-      return this.fetch({
-        data: {
-          q: this.query,
-          format: 'json'
-        },
-        success: function(collection) {
-          if (callback && typeof callback === 'function') {
-            callback(undefined, collection);
-          }
-        },
-        error: function(xhr, err) {
-          if (callback && typeof callback === 'function') {
-            callback(JSON.parse(err.responseText).error);
-          }
-        }
-      });
-    },
+    // parse: function(data) {
+    //   return data.rows;
+    // },
+
+    // fetchData: function(callback) {
+    //   return this.fetch({
+    //     data: {
+    //       q: this.query,
+    //       format: 'json'
+    //     },
+    //     success: function(collection) {
+    //       if (callback && typeof callback === 'function') {
+    //         callback(undefined, collection);
+    //       }
+    //     },
+    //     error: function(xhr, err) {
+    //       if (callback && typeof callback === 'function') {
+    //         callback(JSON.parse(err.responseText).error);
+    //       }
+    //     }
+    //   });
+    // },
 
     getGroups: function() {
       if (!this.groupedData) {
@@ -147,7 +158,7 @@
       //   var cartodbId = layer.feature.properties.cartodb_id;
       //   var country = _.findWhere(data, { cartodb_id: cartodbId });
       //   if (country && country.total) {
-      //     layer.bindPopup('<p><strong>' + country.country +'</strong>' +
+      //     layer.bindPopup('<p><strong>' + country.name +'</strong>' +
       //       '<br> ' + country.total + ' tCO<sub>2</sub></p>');
       //   } else {
       //     layer.bindPopup('No data');
@@ -232,8 +243,20 @@
 
       $.when(
         $.get('countries.topojson'),
-        this.map.countries.fetchData()
-      ).done((function(topojson) {
+        $.ajax({
+          url: 'http://insights.cartodb.com/api/v1/sql/',
+          dataType: 'text',
+          data: {
+            q: 'SELECT e.total_co_excluding_land_use_change_and_forestry_mtco AS total, e.year, e.country as name, c.cartodb_id FROM cait_2_0_country_co2_emissions e JOIN countries c on c.admin=e.country',
+            format: 'csv'
+          }
+        })
+        // this.map.countries.fetchData()
+      ).then((function(topojson, csv) {
+
+        var data = helpers.csvToJSON(csv[0]);
+
+        this.map.countries.add(data);
 
         var minTotal = this.map.countries.getMinTotal().total;
         var maxTotal = this.map.countries.getMaxTotal().total;
