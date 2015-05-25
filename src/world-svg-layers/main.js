@@ -11,13 +11,7 @@
     return result.data;
   };
 
-  var CountryModel = Backbone.Model.extend({
-    idAttribute: 'cartodb_id'
-  });
-
   var CountriesCollection = Backbone.Collection.extend({
-
-    model: CountryModel,
 
     // query: 'SELECT e.total_co_excluding_land_use_change_and_forestry_mtco AS total, e.year as year, e.country as name, c.cartodb_id as id FROM cait_2_0_country_co2_emissions e JOIN countries c on c.admin=e.country',
 
@@ -244,7 +238,7 @@
       $.when(
         $.get('countries.topojson'),
         $.ajax({
-          url: 'http://insights.cartodb.com/api/v1/sql/',
+          url: 'http://insights.cartodb.com/api/v2/sql/',
           dataType: 'text',
           data: {
             q: 'SELECT e.total_co_excluding_land_use_change_and_forestry_mtco AS total, e.year, e.country as name, c.cartodb_id FROM cait_2_0_country_co2_emissions e JOIN countries c on c.admin=e.country',
