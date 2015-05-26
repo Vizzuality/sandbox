@@ -1,98 +1,26 @@
 (function() {
 
-  var helpers = {};
+  // Creating application
+  var app = {};
 
-  helpers.choropleth = function(min, max, buckets) {
-    return d3.scale.quantize().range(colorbrewer.Greens[buckets]);
-  };
-
-  helpers.csvToJSON = function(data) {
-    var result = Papa.parse(data, { header: true, dynamicTyping: true });
-    return result.data;
-  };
-
-  var CountriesCollection = Backbone.Collection.extend({
-
-    // query: 'SELECT e.total_co_excluding_land_use_change_and_forestry_mtco AS total, e.year as year, e.country as name, c.cartodb_id as id FROM cait_2_0_country_co2_emissions e JOIN countries c on c.admin=e.country',
-
-    // url: function() {
-    //   return 'http://insights.cartodb.com/api/v1/sql/';
-    // },
-
-    // parse: function(data) {
-    //   return data.rows;
-    // },
-
-    // fetchData: function(callback) {
-    //   return this.fetch({
-    //     data: {
-    //       q: this.query,
-    //       format: 'json'
-    //     },
-    //     success: function(collection) {
-    //       if (callback && typeof callback === 'function') {
-    //         callback(undefined, collection);
-    //       }
-    //     },
-    //     error: function(xhr, err) {
-    //       if (callback && typeof callback === 'function') {
-    //         callback(JSON.parse(err.responseText).error);
-    //       }
-    //     }
-    //   });
-    // },
-
-    getGroups: function() {
-      if (!this.groupedData) {
-        var result = {};
-        // TODO: Get better performance here
-        var years = _.groupBy(this.toJSON(), 'year');
-        for (var key in years) {
-          result[key] = _.groupBy(years[key], 'cartodb_id');
-        }
-        this.groupedData = result;
-      }
-      return this.groupedData;
-    },
-
-    getByYear: function(year) {
-      return _.where(this.toJSON(), { year: year });
-    },
-
-    getMinYear: function() {
-      return _.min(this.toJSON(), function(d) {
-        return d.year;
-      });
-    },
-
-    getMaxYear: function() {
-      return _.max(this.toJSON(), function(d) {
-        return d.year;
-      });
-    },
-
-    getMinTotal: function() {
-      return _.min(this.toJSON(), function(d) {
-        return d.total;
-      });
-    },
-
-    getMaxTotal: function() {
-      return _.max(this.toJSON(), function(d) {
-        return d.total;
-      });
+  var parseData = function(data) {
+    var result = {};
+    // TODO: Get better performance here
+    var years = _.groupBy(data, 'year');
+    for (var key in years) {
+      result[key] = _.groupBy(years[key], 'cartodb_id');
     }
+    return result;
+  };
 
-  });
+  var MapView = function() {
 
-  var MapView = Backbone.View.extend({
-
-    el: '#map',
-
-    options: {
+    this.options = {
       map: {
         center: [0, 0],
-        zoom: 2
+        zoom: 2,
+        minZoom: 2,
+        maxZoom: 16
       },
       tiles: {
         url: 'http://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
@@ -102,178 +30,171 @@
         }
       },
       featureStyle: {
-        fillColor: '#ddd',
+        fillColor: '#999',
         color: '#060',
         weight: 1,
         opacity: 1,
         fillOpacity: 0.7
       }
-    },
-
-    initialize: function() {
-      this.countries = new CountriesCollection();
-      // Creating map
-      this.createMap();
-    },
-
-    createMap: function() {
+    };
+    
+    this.createMap = function() {
       this.map = L.map(this.el, this.options.map);
       // Adding tiles
-      L.tileLayer(this.options.tiles.url, this.options.tiles.options).addTo(this.map);
-    },
+      // L.tileLayer(this.options.tiles.url, this.options.tiles.options)
+      //  .addTo(this.map);
+    };
 
-    setCountriesLayer: function(topojson) {
-      var geojson = omnivore.topojson.parse(topojson);
+    this.createLayer = function(topojson) {
+      // The problem is here
+      var geojson = omnivore.topojson.parse(topojson); // it takes 500ms
       var style = this.options.featureStyle;
-      var data = this.countries.toJSON();
-      this.countriesLayer = L.geoJson(geojson, {
-        style: function() { return style; },
-      });
-      this.map.addLayer(this.countriesLayer);
-    },
+      this.layer = L.geoJson(geojson, {
+        style: function() { return style; }
+      }); // it takes 750ms
+      this.map.addLayer(this.layer); // it takes 600ms
+    };
 
-    setYear: function(year) {
+    this.setYear = function(year) {
       var self = this;
-      var data = this.countries.getGroups()[year];
+      var data = app.groupedData[year];
       var style = _.clone(this.options.featureStyle);
+      if (!this.getColor) {
+        console.error('first set colors');
+      } else {
+        this.layer.setStyle(function(feature) {
+          var cartodbId = feature.properties.cartodb_id;
+          var country = data[cartodbId];
+          if (country && country[0].total) {
+            style.fillColor = self.getColor(country[0].total);
+          } else {
+            style.fillColor = self.options.featureStyle.fillColor;
+          }
+          return style;
+        });
+      }
+    };
 
-      this.countriesLayer.setStyle(function(feature) {
-        var cartodbId = feature.properties.cartodb_id;
-        var country = data[cartodbId];
-        if (country && country[0].total) {
-          style.fillColor = self.colors(country[0].total);
-        } else {
-          style.fillColor = self.options.featureStyle.fillColor;
-        }
-        return style;
-      });
+    this.setColors = function(min, max, buckets) {
+      this.getColor = d3.scale.quantize()
+        .domain([min, max])
+        .range(colorbrewer.GnBu[buckets]);
+    };
+    
+    this.init = (function() {
+      this.el = document.getElementById('map');
+      this.createMap();
+    }).bind(this)();
 
-      // this.countriesLayer.eachLayer(function(layer) {
-      //   var cartodbId = layer.feature.properties.cartodb_id;
-      //   var country = _.findWhere(data, { cartodb_id: cartodbId });
-      //   if (country && country.total) {
-      //     layer.bindPopup('<p><strong>' + country.name +'</strong>' +
-      //       '<br> ' + country.total + ' tCO<sub>2</sub></p>');
-      //   } else {
-      //     layer.bindPopup('No data');
-      //   }
-      // });
-    },
+    return this;
+  };
 
-    setColors: function(min, max, buckets) {
-      this.colors = helpers.choropleth(min, max, buckets);
-    }
+  var SliderView = function() {
 
-  });
+    this.options = { velocity: 100 };
 
-  var SliderView = Backbone.View.extend({
+    this.setEvents = function() {
+      var self = this;
+      var changeYearEvent = new Event('ChangeYear');
+      this.input.oninput = function() {
+        self.setText(self.input.value);
+        self.el.dispatchEvent(changeYearEvent);
+      };
+      this.startBtn.onclick = this.start.bind(this);
+      this.stopBtn.onclick = this.stop.bind(this);
+    };
 
-    el: '#slider',
-
-    options: {
-      velocity: 100
-    },
-
-    events: {
-      'change input': 'setLabel',
-      'click #sliderPlay': 'start',
-      'click #sliderStop': 'stop'
-    },
-
-    initialize: function() {
-      this.timer = null;
-      this.$label = $('#sliderLabel');
-      this.$range = this.$el.find('input[type="range"]');
-    },
-
-    show: function() {
-      this.$el.show();
-    },
-
-    start: function() {
+    this.start = function() {
       this.timer = setInterval((function() {
-        var value = parseInt(this.$range.val());
+        var value = parseInt(this.input.value);
         var current = value + 1;
         if (this.max === current) {
           this.stop();
         }
-        this.$range.val(current).trigger('change');
+        this.setValue(current);
       }).bind(this), this.options.velocity)
-    },
+    };
 
-    stop: function() {
+    this.stop = function() {
       if (this.timer) {
         clearInterval(this.timer);
       }
-    },
+    };
 
-    setMin: function(min) {
+    this.show = function() {
+      this.el.className = '';
+    };
+
+    this.hide = function() {
+      this.el.className = 'is-hidden';
+    };
+
+    this.setRange = function(min, max) {
       this.min = min;
-      this.$range.attr('min', min);
-    },
-
-    setMax: function(max) {
       this.max = max;
-      this.$range.attr('max', max);
-    },
+      this.input.setAttribute('min', min);
+      this.input.setAttribute('max', max);
+    };
 
-    setLabel: function(e) {
-      this.$label.text(e.currentTarget.value);
-    }
+    this.setValue = function(value) {
+      this.input.value = value;
+      this.input.oninput();
+    };
 
-  });
+    this.setText = function(text) {
+      this.label.textContent = text;
+    };
 
-  var App = Backbone.View.extend({
+    this.init = (function() {
+      this.timer = null;
+      this.el = document.getElementById('slider');
+      this.input = document.getElementById('sliderRange');
+      this.label = document.getElementById('sliderLabel');
+      this.startBtn = document.getElementById('sliderPlay');
+      this.stopBtn = document.getElementById('sliderStop');
+      this.setEvents();
+    }).bind(this)();
 
-    el: 'body',
+    return this;
 
-    initialize: function() {
-      this.map = new MapView();
-      this.slider = new SliderView();
-
-      this.slider.$range.on('change', (function(e) {
-        this.map.setYear(parseInt(e.currentTarget.value));
-      }).bind(this));
-
-      $.when(
-        $.get('countries.topojson'),
-        $.ajax({
-          url: 'http://insights.cartodb.com/api/v2/sql/',
-          dataType: 'text',
-          data: {
-            q: 'SELECT e.total_co_excluding_land_use_change_and_forestry_mtco AS total, e.year, e.country as name, c.cartodb_id FROM cait_2_0_country_co2_emissions e JOIN countries c on c.admin=e.country',
-            format: 'csv'
-          }
-        })
-        // this.map.countries.fetchData()
-      ).then((function(topojson, csv) {
-
-        var data = helpers.csvToJSON(csv[0]);
-
-        this.map.countries.add(data);
-
-        var minTotal = this.map.countries.getMinTotal().total;
-        var maxTotal = this.map.countries.getMaxTotal().total;
-        var minYear = this.map.countries.getMinYear().year;
-        var maxYear = this.map.countries.getMaxYear().year;
-
-        this.map.setColors(minTotal, maxTotal, 7);
-        this.map.setCountriesLayer(topojson[0]);
-
-        this.slider.setMin(minYear);
-        this.slider.setMax(maxYear);
-        this.slider.show();
-
-        this.slider.$range.val(minYear).trigger('change');
-
-      }).bind(this));
-    }
-
-  });
+  };
 
   // Document ready
   document.addEventListener('DOMContentLoaded', function() {
-    new App();
+    
+    app.loader = document.getElementById('loader');
+    app.map = new MapView();
+    app.slider = new SliderView();
+
+    // When all data is loaded
+    document.addEventListener('DataLoaded', function() {
+
+      var data = responses[1];
+      var years = utils.getMinMax(data, 'year');
+      var totals = utils.getMinMax(data, 'total');
+
+      var minData = totals[0];
+      var maxData = totals[1];
+      var minYear = years[0];
+      var maxYear = years[1];
+
+      app.map.createLayer(responses[0]);
+      app.groupedData = parseData(data);
+
+      app.map.setColors(minData, maxData, 9);
+
+      app.slider.el.addEventListener('ChangeYear', function() {
+        app.map.setYear(parseInt(app.slider.input.value));
+      });
+
+      app.slider.setRange(minYear, maxYear);
+      app.slider.setValue(minYear);
+      app.slider.show();
+
+      app.loader.className = 'loader is-hidden';
+
+    });
+
   });
 
 })();
